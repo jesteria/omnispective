@@ -24,8 +24,8 @@ class OmnispectiveMiddleware(base.OmnispectiveClient):
         request_data = self.parse_request(request)
         response_data = self.parse_response(response)
         if settings.USE_CELERY:
-            self.enqueue_task('process_request', request_data)
-            self.enqueue_task('process_response', response_data)
+            self.enqueue_task('post_request', request_data)
+            self.enqueue_task('post_response', response_data)
         else:
             self.post_request(request_data)
             self.post_response(response_data)

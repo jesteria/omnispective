@@ -19,9 +19,9 @@ except ImportError:
 
 
 @task()
-def process_request(data):
+def post_request(data):
     OmnispectiveClient.post_request(data)
 
 @task()
-def process_response(data):
+def post_response(data):
     OmnispectiveClient.post_response(data)

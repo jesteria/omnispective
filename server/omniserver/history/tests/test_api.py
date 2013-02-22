@@ -1,4 +1,5 @@
 import json
+import textwrap
 
 from django.contrib.auth import models as auth
 from django.core.urlresolvers import reverse
@@ -47,6 +48,17 @@ class TestClientRequestApi(ApiTestCase):
         super(TestClientRequestApi, self).setUp()
         self.base_url = reverse('api_dispatch_list',
                                 kwargs={'resource_name': 'clientrequest'})
+        self.get_mypath = textwrap.dedent('''\
+            GET /mypath/?key=value HTTP/1.0
+            User-Agent: Test/0.1
+            ''')
+        self.post_mypath = textwrap.dedent('''\
+            POST /mypath/?get=query HTTP/1.0
+            User-Agent: Test/0.1
+            Other-Header: This
+
+            the=pay-load&such=%26such
+            ''')
         self.can_add_request = auth.Permission.objects.get(
             content_type__app_label='history',
             codename='add_clientrequest',
@@ -78,11 +90,8 @@ class TestClientRequestApi(ApiTestCase):
             self.base_url,
             format='json',
             data={
-                'method': 'teapot',
-                'protocol': 'https:',
-                'host': 'example.com',
-                'path': '/mypath/',
-                'full_path': 'https://example.com/mypath/?key=value',
+                'content': self.get_mypath,
+                'full_url': 'https://example.com/mypath/?key=value',
                 'remote_addr': '0.0.0.0',
                 'session': {
                     'key': '01234ABCD',
@@ -101,11 +110,8 @@ class TestClientRequestApi(ApiTestCase):
             self.base_url,
             format='json',
             data={
-                'method': 'teapot',
-                'protocol': 'https:',
-                'host': 'example.com',
-                'path': '/mypath/',
-                'full_path': 'https://example.com/mypath/?key=value',
+                'content': self.get_mypath,
+                'full_url': 'https://example.com/mypath/?key=value',
                 'remote_addr': '0.0.0.0',
                 'session': {
                     'key': '01234ABCD',
@@ -127,11 +133,8 @@ class TestClientRequestApi(ApiTestCase):
             self.base_url,
             format='json',
             data={
-                'method': 'teapot',
-                'protocol': 'https:',
-                'host': 'example.com',
-                'path': '/mypath/',
-                'full_path': 'https://example.com/mypath/?key=value',
+                'content': self.get_mypath,
+                'full_url': 'https://example.com/mypath/?key=value',
                 'remote_addr': '0.0.0.0',
                 'session': {
                     'key': '01234ABCD',
@@ -151,11 +154,8 @@ class TestClientRequestApi(ApiTestCase):
             self.base_url,
             format='json',
             data={
-                'method': 'teapot',
-                'protocol': 'https:',
-                'host': 'example.com',
-                'path': '/mypath/',
-                'full_path': 'https://example.com/mypath/?key=value',
+                'content': self.get_mypath,
+                'full_url': 'https://example.com/mypath/?key=value',
                 'remote_addr': '0.0.0.0',
                 'session': {
                     'key': '01234ABCD',
@@ -168,12 +168,51 @@ class TestClientRequestApi(ApiTestCase):
         self.assertEqual(client_requests.count(), count0 + 1)
 
         client_request = client_requests.latest()
-        self.assertEqual(client_request.method, 'teapot')
+        self.assertEqual(client_request.method, 'GET')
         self.assertEqual(client_request.get_protocol_display(), 'HTTPS')
         self.assertEqual(client_request.host, 'example.com')
         self.assertEqual(client_request.path, '/mypath/')
-        self.assertEqual(client_request.full_path,
+        self.assertEqual(client_request.query_params.urlencoded(), 'key=value')
+        self.assertEqual(client_request.full_url,
                          'https://example.com/mypath/?key=value')
+        self.assertEqual(client_request.user_agent, 'Test/0.1')
         self.assertEqual(client_request.remote_addr, '0.0.0.0')
+        self.assertEqual(client_request.session.key, '01234ABCD')
+        self.assertEqual(client_request.session.app, self.app)
+
+    def test_post_POST_request_json(self):
+        client_requests = history.ClientRequest.objects.all()
+        count0 = client_requests.count()
+        response = self.api_client.post(
+            self.base_url,
+            format='json',
+            data={
+                'content': self.post_mypath,
+                'full_url': 'http://example.com/mypath/?get=query',
+                'remote_addr': '192.0.1.2',
+                'session': {
+                    'key': '01234ABCD',
+                    'app': self.app.code,
+                },
+            },
+            authentication=self.apikey_credentials,
+        )
+        self.assertHttpCreated(response)
+        self.assertEqual(client_requests.count(), count0 + 1)
+
+        client_request = client_requests.latest()
+        self.assertEqual(client_request.method, 'POST')
+        self.assertEqual(client_request.get_protocol_display(), 'HTTP')
+        self.assertEqual(client_request.host, 'example.com')
+        self.assertEqual(client_request.path, '/mypath/')
+        self.assertEqual(client_request.query_params.urlencoded(), 'get=query')
+        self.assertEqual(client_request.full_url,
+                         'http://example.com/mypath/?get=query')
+        self.assertEqual(
+            list(client_request.form_params.values_list('key', 'value')),
+            [('the', 'pay-load'), ('such', '&such')]
+        )
+        self.assertEqual(client_request.user_agent, 'Test/0.1')
+        self.assertEqual(client_request.remote_addr, '192.0.1.2')
         self.assertEqual(client_request.session.key, '01234ABCD')
         self.assertEqual(client_request.session.app, self.app)

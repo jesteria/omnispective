@@ -59,3 +59,16 @@ def build(what):
             return
 
     fab.abort("No such build target {0!r}".format(what))
+
+
+def test(what=None):
+    ''' Run unit tests locally for a given application
+
+        test:history
+
+    '''
+    apps = ['history', ]
+    if what:
+        apps = [what, ]
+    with fab.lcd('server/omniserver/'):
+        fab.local('python manage.py test %s' % ''.join(apps))

@@ -17,7 +17,7 @@ setup(
     packages=['omniserver'],
     version=VERSION['version'],
     install_requires=[
-        'Django==1.4.3',
+        'Django==1.4.5',
         'django-tastypie==0.9.12',
     ],
     tests_require=TESTS_REQUIRE,

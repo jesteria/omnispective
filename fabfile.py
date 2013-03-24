@@ -61,14 +61,17 @@ def build(what):
     fab.abort("No such build target {0!r}".format(what))
 
 
-def test(what=None):
+def test(*apps, **kws):
     ''' Run unit tests locally for a given application
 
-        test:history
+        test:history,verbosity=2
 
     '''
-    apps = ['history', ]
-    if what:
-        apps = [what, ]
-    with fab.lcd('server/omniserver/'):
-        fab.local('python manage.py test %s' % ''.join(apps))
+    apps = apps or ['history']
+    arguments = ' '.join('--{key}={value}'.format(key=key, value=value)
+                         for key, value in kws.items())
+    with fab.lcd(os.path.join(ROOT, 'server/omniserver/')):
+        fab.local('python manage.py test {apps}{extra}'.format(
+            apps=' '.join(apps),
+            extra=(arguments and ' {0}'.format(arguments)),
+        ))

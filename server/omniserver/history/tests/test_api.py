@@ -17,10 +17,16 @@ class ApiTestCase(ResourceTestCase):
                                                      self.user.api_key.key)
         self.app = history.App.objects.create(code='myapp', name='My App')
 
+    def assertStatusCode(self, response, status_code=200):
+        return self.assertEqual(response.status_code, status_code)
+
 
 class TestAppApi(ApiTestCase):
 
     def test_get_list_json(self):
+        ''' Test asserting that we can receive a list of history.App
+        resources from the API
+        '''
         response = self.api_client.get(
             reverse('api_dispatch_list', kwargs={'resource_name': 'app'}),
             format='json',
@@ -31,6 +37,9 @@ class TestAppApi(ApiTestCase):
         self.assertEqual(data['meta']['total_count'], 1)
 
     def test_get_detail_json(self):
+        ''' Test asserting that we can receive a history.App object via the
+        API
+        '''
         response = self.api_client.get(
             reverse('api_dispatch_detail', kwargs={'resource_name': 'app',
                                                    'code': self.app.code}),
@@ -71,10 +80,16 @@ class TestClientRequestApi(ApiTestCase):
         self.user.user_permissions.add(self.can_add_session)
 
     def test_get_list_json_unauthorized(self):
+        ''' Test asserting that we block unauthorized users from grabbing a
+        list of ClientRequest objects
+        '''
         response = self.api_client.get(self.base_url, format='json')
         self.assertHttpUnauthorized(response)
 
     def test_get_list_json(self):
+        ''' Test asserting we can retrieve a list of ClientResource objects
+        as an authorized user
+        '''
         response = self.api_client.get(
             self.base_url,
             format='json',
@@ -84,6 +99,9 @@ class TestClientRequestApi(ApiTestCase):
         self.assertContains(response, '{"meta": {"limit')
 
     def test_post_request_json_unauthorized(self):
+        ''' Test asserting that we block unauthorized users from posting a
+        a ClientRequest
+        '''
         client_requests = history.ClientRequest.objects.all()
         count0 = client_requests.count()
         response = self.api_client.post(
@@ -103,6 +121,9 @@ class TestClientRequestApi(ApiTestCase):
         self.assertEqual(client_requests.count(), count0)
 
     def test_post_request_json_unauthorized_nouser(self):
+        ''' Test asserting that a user must exist in order to post to the
+        ClientRequest API endpoint
+        '''
         client_requests = history.ClientRequest.objects.all()
         count0 = client_requests.count()
         self.user.delete()
@@ -124,6 +145,9 @@ class TestClientRequestApi(ApiTestCase):
         self.assertEqual(client_requests.count(), count0)
 
     def test_post_request_json_unauthorized_noperm(self):
+        ''' Test asserting that a user must have proper permissions in order
+        to post to the ClientRequest API endpoint
+        '''
         client_requests = history.ClientRequest.objects.all()
         client_sessions = history.ClientSession.objects.all()
         request_count0 = client_requests.count()
@@ -147,7 +171,11 @@ class TestClientRequestApi(ApiTestCase):
         self.assertEqual(client_requests.count(), request_count0)
         self.assertEqual(client_sessions.count(), session_count0)
 
-    def test_post_request_json(self):
+    def test_post_GET_request_json(self):
+        ''' Testing the ability to create a new ClientRequest object via a
+        post to the ClientRequest API endpoint. Tracking a GET request by a
+        client, and asserting that we properly map all of the data
+        '''
         client_requests = history.ClientRequest.objects.all()
         count0 = client_requests.count()
         response = self.api_client.post(
@@ -181,6 +209,10 @@ class TestClientRequestApi(ApiTestCase):
         self.assertEqual(client_request.session.app, self.app)
 
     def test_post_POST_request_json(self):
+        ''' Testing the ability to create a new ClientRequest object via a
+        post to the ClientRequest API endpoint. Tracking a POST request by a
+        client, and asserting that we properly map all of the data
+        '''
         client_requests = history.ClientRequest.objects.all()
         count0 = client_requests.count()
         response = self.api_client.post(
@@ -216,3 +248,25 @@ class TestClientRequestApi(ApiTestCase):
         self.assertEqual(client_request.remote_addr, '192.0.1.2')
         self.assertEqual(client_request.session.key, '01234ABCD')
         self.assertEqual(client_request.session.app, self.app)
+
+    def test_invalid_app_name(self):
+        ''' Test asserting that a proper app name must be provided when
+        submitting a client's request to the ClientRequest API endpoint
+        '''
+        response = self.api_client.post(
+            self.base_url,
+            format='json',
+            data={
+                'content': self.get_mypath,
+                'full_url': 'https://example.com/mypath/?key=value',
+                'remote_addr': '0.0.0.0',
+                'session': {
+                    'key': '01234ABCD',
+                    'app': 'bogus',
+                },
+            },
+            authentication=self.apikey_credentials,
+        )
+        content = json.loads(response.content)
+        self.assertStatusCode(response, 400)
+        self.assertEqual(content['error'], 'App code missing or invalid')

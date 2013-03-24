@@ -17,9 +17,6 @@ class ApiTestCase(ResourceTestCase):
                                                      self.user.api_key.key)
         self.app = history.App.objects.create(code='myapp', name='My App')
 
-    def assertStatusCode(self, response, status_code=200):
-        return self.assertEqual(response.status_code, status_code)
-
 
 class TestAppApi(ApiTestCase):
 
@@ -268,5 +265,5 @@ class TestClientRequestApi(ApiTestCase):
             authentication=self.apikey_credentials,
         )
         content = json.loads(response.content)
-        self.assertStatusCode(response, 400)
+        self.assertHttpBadRequest(response)
         self.assertEqual(content['error'], 'App code missing or invalid')

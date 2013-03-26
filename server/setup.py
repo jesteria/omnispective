@@ -19,6 +19,7 @@ setup(
     install_requires=[
         'Django==1.4.5',
         'django-tastypie==0.9.12',
+        'pil==1.1.7',
     ],
     tests_require=TESTS_REQUIRE,
     description="Customer experience management server",

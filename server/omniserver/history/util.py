@@ -22,3 +22,9 @@ class DumbHTTPRequestHandler(BaseHTTPRequestHandler):
 
     def finish(self):
         pass
+
+
+class FakeSocket(StringIO):
+
+    def makefile(self, *_args, **_kws):
+        return self

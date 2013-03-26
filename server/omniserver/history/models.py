@@ -1,3 +1,4 @@
+import httplib
 import urllib
 import urlparse
 
@@ -6,7 +7,7 @@ from django.db import models
 from django.db.models.query import QuerySet
 from tastypie.models import create_api_key
 
-from history.util import DumbHTTPRequestHandler
+from history import util
 
 
 class BaseModel(models.Model):
@@ -45,7 +46,7 @@ class Client(BaseModel):
 class ClientSession(BaseModel):
 
     key = models.CharField(max_length=255, db_index=True)
-    linked_sessions = models.ManyToManyField('history.ClientSession') # TODO
+    linked_sessions = models.ManyToManyField('history.ClientSession') # TODO: 16
     app = models.ForeignKey('history.App', related_name='sessions')
     client = models.ForeignKey('history.Client',
                                null=True, related_name='sessions') # TODO
@@ -94,7 +95,7 @@ class ClientRequest(BaseModel):
             rfile: the raw request buffer
 
         """
-        return DumbHTTPRequestHandler(self.content)
+        return util.DumbHTTPRequestHandler(self.content)
 
     def pre_populate(self):
         """Fill in / update field data derived from ``full_url`` and
@@ -123,11 +124,11 @@ class ClientRequest(BaseModel):
         """
         parsed = urlparse.urlparse(self.full_url)
         self.query_params.all().delete()
-        self.query_params.parse(parsed.query)
+        self.query_params.parse_create(parsed.query)
 
         additional_payload = self.parse().rfile.read().strip()
         self.form_params.all().delete()
-        self.form_params.parse(additional_payload)
+        self.form_params.parse_create(additional_payload)
 
     def save(self, *args, **kws):
         """Insert/update the object row in the database table.
@@ -152,7 +153,7 @@ class ParameterManager(models.Manager):
     def get_query_set(self):
         return ParameterQuerySet(self.model, using=self._db)
 
-    def parse(self, unparsed, request=None):
+    def parse_create(self, unparsed, request=None):
         parsed = urlparse.parse_qsl(unparsed)
         return [self.create(key=key,
                             value=value,
@@ -199,17 +200,63 @@ class FormParameter(RequestParameter):
 
 
 class ServerResponse(BaseModel):
-    # generically what we responded with, AND an HTML rendering, (as might not be able to render the same in the future)
-    # omniserver should do rendering of response content to image, of course, NOT client
-    # and make use of ImageField, i.e. DON'T store image in db
-    content = models.TextField()
-    # content_type = ...?
+
     request = models.OneToOneField('history.ClientRequest')
-    status_code = models.PositiveIntegerField()
-    # ...blah blah blah
+    # Server may initiate new session via response:
+    session = models.ForeignKey('history.ClientSession',
+                                related_name='responses')
+    content = models.TextField(help_text="The raw, complete response content")
+    # Filled in by save() from content --
+    status = models.PositiveIntegerField(db_index=True)
+    reason = models.CharField(max_length=100)
+    body = models.TextField()
+    location = models.CharField(max_length=255, null=True, db_index=True,
+        help_text="The resource to which the client was redirected, if any")
+    # Attached asynchronously --
+    captured = models.ImageField(
+        upload_to='captures', # TODO
+        help_text='The path to an image capture of the rendered response',
+    )
 
     def __unicode__(self):
-        return u'{0} {1}'.format(self.request, self.status_code)
+        return u'{0} {1} {2}'.format(self.request, self.status, self.reason)
+
+    def parse(self):
+        """Parse the raw response content and return an httplib response object.
+
+        The response object has the following methods and attributes of note:
+
+            getheaders(): return a mapping of the response headers
+            read(): read and return the response payload
+            status: the response status code
+            reason: the response status reason
+
+        """
+        socket = util.FakeSocket(self.content)
+        response = httplib.HTTPResponse(socket)
+        response.begin()
+        return response
+
+    def pre_populate(self):
+        """Fill in / update field data derived from ``content``, namely:
+
+            ``status``, ``reason``, ``body`` and ``location``
+
+        """
+        response = self.parse()
+        self.status = response.status
+        self.reason = response.reason
+        self.body = response.read()
+        self.location = dict(response.getheaders()).get('Location')
+
+    def save(self, *args, **kws):
+        """Insert/update the object row in the database table.
+
+        Automatically fills in / updates derived fields. (See pre_populate.)
+
+        """
+        self.pre_populate()
+        super(ServerResponse, self).save(*args, **kws)
 
 
 # Automatically create an api key for each new User:
